@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>双轮机甲 · 驾驶舱</title>
+    <link rel="icon"
+        href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23111"/><path d="M16 40h32v8H16zm4-24h24v6H20zm-4 10h32v6H16z" fill="%23fff"/></svg>'>
+    <link rel="stylesheet" href="/css/main.css">
+</head>
+
+<body>
+    <div class="wrap">
+        <h1>双轮机甲 · 驾驶舱</h1>
+        <div class="card toolbar">
+            <div class="ms">
+                <label>数据刷新速度:<input id="rateHz" type="number" min="20" max="1000" step="1" value="100"></label>
+                <button class="btn" id="btnSetRate">应用设置</button>
+            </div>
+            <div class="control-group">启动机甲：<label class="switch"><input id="runSwitch" type="checkbox"><span
+                        class="slider"></span></label></div>
+            <div class="control-group">数据面板：<label class="switch"><input id="chartSwitch" type="checkbox"><span
+                        class="slider"></span></label></div>
+            <div class="control-group">防摔保护：<label class="switch"><input id="fallDetectSwitch" type="checkbox"><span
+                        class="slider"></span></label></div>
+            <button class="btn ghost" id="btnSystemRestart" title="重启ESP32控制器">系统重启</button>
+            <div class="readout" id="status" style="margin-left:auto">连接状态: 等待连接…</div>
+        </div>
+
+        <div class="card toolbar" style="margin-top:10px">
+            <div class="ms">
+                <div class="indicator">车身状态：<span class="bulb off" id="fallLamp"></span><span class="readout"
+                        id="fallLabel">—</span></div>
+            </div>
+            <div class="energy-wrap">
+                <span class="energy-label">能量</span>
+                <div class="energy-bar">
+                    <div class="energy-fill" id="energyFill"></div>
+                </div>
+                <span class="energy-text" id="energyText">--%</span>
+            </div>
+        </div>
+
+        <div class="card wifi-card" id="wifiCard">
+            <div class="card-header">
+                <div>
+                    <div class="wifi-eyebrow">机甲通信设置</div>
+                    <h2>通信链路</h2>
+                    <p class="ghost-text">修改机甲名称 / 连接密钥，重启通信模块</p>
+                </div>
+                <div class="wifi-badge">
+                    <span class="wifi-dot"></span>
+                    <span class="ghost-text">当前机甲地址</span>
+                    <span id="wifiIp">—</span>
+                </div>
+            </div>
+            <div class="wifi-grid">
+                <label class="form-field">
+                    <span>机甲名称</span>
+                    <input type="text" id="wifiSsid" maxlength="32" placeholder="Balance_Robot">
+                </label>
+                <label class="form-field">
+                    <span>连接密钥</span>
+                    <div class="password-input">
+                        <input type="password" id="wifiPassword" maxlength="63" placeholder="12345678">
+                        <button class="btn ghost" type="button" id="wifiTogglePwd">显示密钥</button>
+                    </div>
+                </label>
+                <div class="wifi-actions">
+                    <button class="btn" id="wifiSaveBtn">重启通信模块</button>
+                    <div class="wifi-hint" id="wifiHint">修改后通信模块会短暂重启，需重新连接</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card wifi-card" id="groupCard">
+            <div class="card-header">
+                <div>
+                    <div class="wifi-eyebrow">车队控制系统</div>
+                    <h2>车队配置</h2>
+                    <p class="ghost-text">配置头车/从车模式，组建车队协同控制</p>
+                </div>
+                <div class="wifi-badge">
+                    <span>角色: <strong id="roleDisplay">单机</strong></span>
+                    <span class="indicator"><span class="bulb off" id="espnowStatusLamp"></span><span id="espnowStatusText">未启用</span></span>
+                </div>
+            </div>
+            <div class="wifi-grid">
+                <label class="form-field">
+                    <span>本机MAC地址</span>
+                    <div class="mac-display" id="myMac" style="color:#00ff88; font-weight:600;">--:--:--:--:--:--</div>
+                </label>
+                <label class="form-field">
+                    <span>车辆角色</span>
+                    <select id="groupRole" style="width:100%; padding:8px;">
+                        <option value="standalone">单机模式</option>
+                        <option value="leader">头车（接收网页控制）</option>
+                        <option value="follower">从车（跟随头车运动）</option>
+                    </select>
+                </label>
+                <label class="form-field">
+                    <span>车队ID</span>
+                    <input type="number" id="groupId" min="0" max="255" value="0">
+                </label>
+                <label class="form-field" style="display:none;" id="leaderMacField">
+                    <span>头车MAC地址</span>
+                    <input type="text" id="leaderMac" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17">
+                </label>
+                <label class="form-field">
+                    <span>启用ESP-NOW通信</span>
+                    <label class="switch"><input id="espnowSwitch" type="checkbox"><span class="slider"></span></label>
+                </label>
+                <div class="wifi-actions">
+                    <button class="btn" id="btnSaveGroup">保存配置</button>
+                    <button class="btn ghost" id="btnRefreshGroup">刷新状态</button>
+                    <div class="wifi-hint">保存后需要重启ESP32才能生效</div>
+                </div>
+                <div id="followersCount" style="display:none; margin-top:20px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.1);">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <span style="color:#888;">从车在线:</span>
+                        <span class="count" style="color:#00ff88; font-size:24px; font-weight:bold;">0</span>
+                    </div>
+                    <div id="followersList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card neon-card" id="rgbCard">
+            <div class="rgb-head">
+                <div>
+                    <div class="eyebrow">机甲灯效系统</div>
+                    <h2>机甲灯效系统</h2>
+                </div>
+                <div class="tag" id="rgbModeTag">待机</div>
+            </div>
+            <div class="rgb-body">
+                <div class="rgb-panel">
+                    <div class="chip-row" id="rgbModeList"></div>
+                    <p class="rgb-desc" id="rgbModeDesc">选择一个灯效模式进行预览和切换</p>
+                </div>
+                <div class="rgb-config">
+                    <div class="label-row">
+                        <span>灯光模块数量</span>
+                        <span class="ghost-text">Max <span id="rgbCountValue">5</span></span>
+                    </div>
+                    <input type="range" id="rgbCountRange" min="1" max="12" value="5">
+                    <div class="count-input-row">
+                        <input type="number" id="rgbCountInput" min="1" max="12" value="5">
+                        <span class="ghost-text">实时同步</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid cols-3">
+            <div class="card">
+                <h2 id="chartTitle1">平衡控制</h2>
+                <div class="chart-container"><canvas id="chart1"></canvas></div>
+                <div style="padding: 8px 12px; margin-top: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; font-size: 12px; line-height: 1.6;">
+                    <div style="color: #888; margin-bottom: 4px;">📊 调参提示：</div>
+                    <div style="color: #aaa;">• 波形震荡 → 减小P或增大D</div>
+                    <div style="color: #aaa;">• 响应缓慢 → 增大P</div>
+                    <div style="color: #aaa;">• 静止偏移 → 增大I</div>
+                </div>
+            </div>
+            <div class="card">
+                <h2 id="chartTitle2">速度响应</h2>
+                <div class="chart-container"><canvas id="chart2"></canvas></div>
+                <div style="padding: 8px 12px; margin-top: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; font-size: 12px; line-height: 1.6;">
+                    <div style="color: #888; margin-bottom: 4px;">📊 调参提示：</div>
+                    <div style="color: #aaa;">• ang力矩达到±250 → P过大，已饱和</div>
+                    <div style="color: #aaa;">• spd/pos几乎为0 → 外环增益过小</div>
+                    <div style="color: #aaa;">• 力矩剧烈抖动 → 减小相应环的P</div>
+                </div>
+            </div>
+            <div class="card">
+                <h2 id="chartTitle3">位置控制</h2>
+                <div class="chart-container"><canvas id="chart3"></canvas></div>
+                <div style="padding: 8px 12px; margin-top: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; font-size: 12px; line-height: 1.6;">
+                    <div style="color: #888; margin-bottom: 4px;">📊 调参提示：</div>
+                    <div style="color: #aaa;">• now能跟上tar → 速度环OK</div>
+                    <div style="color: #aaa;">• pos_err持续偏移 → 增大位置环P/I</div>
+                    <div style="color: #aaa;">• 静止时抖动 → 增大速度环D</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="pidCard">
+            <div class="card-header">
+                <h2>机甲核心参数</h2>
+                <div class="button-group">
+                    <button class="btn" id="btnPidSend">发送</button>
+                    <button class="btn" id="btnPidPull">更新</button>
+                </div>
+            </div>
+            <div class="pid-grid">
+                <div class="pid-row">
+                    <div class="pid-group-title" id="pidGroup1">平衡控制参数</div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid1Label1">参数01</span><span class="nbox"><span
+                                    id="sv_key01">0.000</span><input type="number" id="nv_key01" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key01" type="range" min="0" max="1" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid1Label2">参数02</span><span class="nbox"><span
+                                    id="sv_key02">0.000</span><input type="number" id="nv_key02" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key02" type="range" min="0" max="12" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid1Label3">参数03</span><span class="nbox"><span
+                                    id="sv_key03">0.000</span><input type="number" id="nv_key03" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key03" type="range" min="0" max="0.020" step="0.001" value="0">
+                    </div>
+                </div>
+                <div class="pid-row">
+                    <div class="pid-group-title" id="pidGroup2">速度控制参数</div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid2Label1">参数04</span><span class="nbox"><span
+                                    id="sv_key04">0.000</span><input type="number" id="nv_key04" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key04" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid2Label2">参数05</span><span class="nbox"><span
+                                    id="sv_key05">0.000</span><input type="number" id="nv_key05" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key05" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid2Label3">参数06</span><span class="nbox"><span
+                                    id="sv_key06">0.000</span><input type="number" id="nv_key06" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key06" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                </div>
+                <div class="pid-row">
+                    <div class="pid-group-title" id="pidGroup3">位置控制参数</div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid3Label1">参数07</span><span class="nbox"><span
+                                    id="sv_key07">0.000</span><input type="number" id="nv_key07" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key07" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid3Label2">参数08</span><span class="nbox"><span
+                                    id="sv_key08">0.000</span><input type="number" id="nv_key08" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key08" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid3Label3">参数09</span><span class="nbox"><span
+                                    id="sv_key09">0.000</span><input type="number" id="nv_key09" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key09" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                </div>
+                <div class="pid-row">
+                    <div class="pid-group-title" id="pidGroup4">转向控制参数</div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid4Label1">参数10</span><span class="nbox"><span
+                                    id="sv_key10">0.000</span><input type="number" id="nv_key10" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key10" type="range" min="0" max="0.03" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid4Label2">参数11</span><span class="nbox"><span
+                                    id="sv_key11">0.000</span><input type="number" id="nv_key11" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key11" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-head"><span id="pid4Label3">参数12</span><span class="nbox"><span
+                                    id="sv_key12">0.000</span><input type="number" id="nv_key12" step="0.001"
+                                    value="0.000"></span></div><input id="rg_key12" type="range" min="0" max="0.005" step="0.001" value="0">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex">
+            <div class="card" style="flex:1.2">
+                <div class="card-header">
+                    <h2>机甲姿态显示</h2>
+                    <button class="btn" id="btnZeroAtt">重置</button>
+                </div>
+                <div id="robotCanvas"></div>
+                
+                <!-- Pitch零点调节 -->
+                <div style="padding: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: #888; font-size: 14px;">平衡零点</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #00ff88; font-size: 16px; font-weight: 600; min-width: 50px; text-align: right;" id="pitchZeroValue">-2.1</span>
+                            <span style="color: #888; font-size: 14px;">°</span>
+                            <button class="btn ghost" id="btnPitchZeroSend" style="padding: 4px 12px; font-size: 12px;">保存</button>
+                        </div>
+                    </div>
+                    <input type="range" id="pitchZeroRange" min="-5" max="5" step="0.1" value="-2.1" 
+                           style="width: 100%;">
+                </div>
+                
+                <div class="readout" id="attOut">pitch: 0.0° roll: 0.0° yaw: 0.0°</div>
+            </div>
+            <div class="card joystick-wrap" style="flex:.8">
+                <div class="joy-panel">
+                    <h2>驾驶操纵盘</h2>
+                    <div class="joystick" id="joystick">
+                        <div class="stick" id="stick"></div>
+                    </div>
+                    <div class="joy-readout" id="joyOut">x: 0.00 y: 0.00 r: 0.00 θ: 0.0°</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>系统记录</h2>
+            <pre class="readout" id="log">boot</pre>
+        </div>
+    </div>
+
+    <script src="/js/lib/chart.umd.js"></script>
+    <script src="/js/lib/three.min.js"></script>
+    <script type="module" src="/js/main.js"></script>
+
+</body>
+
+</html>
